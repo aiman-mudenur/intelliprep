@@ -242,34 +242,74 @@ def eval():
         "feedback": ", ".join(feedback)
     })
 
-# ------------------ Resume TEXT ------------------
+# ------------------ Smart Resume Analyzer ------------------
+def analyze_resume_text(text):
+
+    text = text.lower()
+
+    # Expanded skill database
+    skill_db = {
+        "programming": ["python","java","c++","javascript"],
+        "web": ["html","css","react","node","flask"],
+        "data": ["machine learning","deep learning","sql","pandas"],
+        "cloud": ["aws","azure","cloud","gcp"]
+    }
+
+    detected = []
+
+    for category in skill_db:
+        for skill in skill_db[category]:
+            if skill in text:
+                detected.append(skill)
+
+    # Dynamic missing skills (based on detected category)
+    suggestions = []
+
+    if "python" in detected:
+        suggestions += ["flask","django"]
+
+    if "machine learning" in detected:
+        suggestions += ["deep learning","nlp"]
+
+    if "cloud" in detected:
+        suggestions += ["aws","azure"]
+
+    if len(detected) == 0:
+        suggestions += ["python","sql","projects"]
+
+    return detected, list(set(suggestions))
+
+
 @app.route('/resume_text', methods=['POST'])
 def resume_text():
-    text = request.json.get("text","").lower()
+    text = request.json.get("text","")
 
-    skills = ["python","sql","react","machine learning","cloud"]
-    found = [s for s in skills if s in text]
-    missing = [s for s in skills if s not in text]
+    found, suggestions = analyze_resume_text(text)
 
-    return jsonify({"found": found, "missing": missing})
+    return jsonify({
+        "found": found,
+        "missing": suggestions
+    })
 
-# ------------------ Resume PDF ------------------
+
 @app.route('/resume_pdf', methods=['POST'])
 def resume_pdf():
     file = request.files['file']
+
+    import io
     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
 
     text = ""
     for page in pdf_reader.pages:
         if page.extract_text():
-            text += page.extract_text().lower()
+            text += page.extract_text()
 
-    skills = ["python","sql","react","machine learning","cloud"]
-    found = [s for s in skills if s in text]
-    missing = [s for s in skills if s not in text]
+    found, suggestions = analyze_resume_text(text)
 
-    return jsonify({"found": found, "missing": missing})
-
+    return jsonify({
+        "found": found,
+        "missing": suggestions
+    })
 
 if __name__ == "__main__":
     app.run()
