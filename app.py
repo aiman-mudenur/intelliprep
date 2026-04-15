@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, session, render_template_string
+from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 import io
 import PyPDF2
@@ -7,14 +7,13 @@ app = Flask(__name__)
 app.secret_key = "intelliprep_secret"
 CORS(app)
 
+# ------------------ UI ------------------
 HTML = """
 <!DOCTYPE html>
 <html>
 <head>
 <title>IntelliPrep AI</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -55,22 +54,10 @@ button {
  margin: 5px;
 }
 
-button:hover {
- background: #2563eb;
-}
+button:hover { background: #2563eb; }
 
 h2 { color: #38bdf8; }
-
-.result {
- margin-top: 10px;
- font-size: 16px;
-}
-
-hr { margin: 20px 0; }
-
-input[type=file]{
- margin: 10px;
-}
+.result { margin-top: 10px; }
 
 </style>
 </head>
@@ -82,7 +69,6 @@ input[type=file]{
 <h2>🚀 IntelliPrep AI</h2>
 <p>AI-powered Interview & Resume Intelligence System</p>
 
-<!-- Question Dropdown -->
 <select id="question">
 <option>Why should we hire you?</option>
 <option>Describe a challenge you faced</option>
@@ -95,10 +81,9 @@ input[type=file]{
 <button onclick="startVoice()">🎤 Speak</button>
 <button onclick="evalAns()">Evaluate</button>
 
-<p id="res" class="result"></p>
+<p id="res"></p>
 
-<!-- Graph -->
-<canvas id="chart" height="120"></canvas>
+<canvas id="chart"></canvas>
 
 <hr>
 
@@ -112,13 +97,13 @@ input[type=file]{
 <input type="file" id="pdfFile">
 <button onclick="uploadPDF()">Upload PDF</button>
 
-<p id="res2" class="result"></p>
+<p id="res2"></p>
 
 </div>
 
 <script>
 
-// ------------------ Voice Input ------------------
+// Voice
 function startVoice(){
  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
  recognition.start();
@@ -127,29 +112,24 @@ function startVoice(){
  }
 }
 
-// ------------------ Chart ------------------
+// Chart
 let scores = [];
 let chart;
 
-function updateChart(newScore){
- scores.push(newScore);
-
+function updateChart(score){
+ scores.push(score);
  if(chart) chart.destroy();
 
- const ctx = document.getElementById('chart');
- chart = new Chart(ctx, {
+ chart = new Chart(document.getElementById('chart'), {
    type: 'line',
    data: {
      labels: scores.map((_,i)=>"Attempt "+(i+1)),
-     datasets: [{
-       label: 'Score Progress',
-       data: scores
-     }]
+     datasets: [{ label: 'Score', data: scores }]
    }
  });
 }
 
-// ------------------ Evaluation ------------------
+// Evaluate
 async function evalAns(){
  let ans=document.getElementById('ans').value;
 
@@ -167,7 +147,7 @@ async function evalAns(){
  updateChart(data.score);
 }
 
-// ------------------ Resume TEXT ------------------
+// Resume text
 async function analyzeText(){
  let txt=document.getElementById('resume').value;
 
@@ -180,27 +160,28 @@ async function analyzeText(){
  let data=await res.json();
 
  document.getElementById('res2').innerHTML =
- "<b>Detected:</b> "+data.found+"<br><b>Missing:</b> "+data.missing;
+ "<b>Detected:</b> "+data.found+
+ "<br><b>Role:</b> "+data.role+
+ "<br><b>Recommended:</b> "+data.recommendations;
 }
 
-// ------------------ Resume PDF ------------------
+// Resume PDF
 async function uploadPDF(){
  let file=document.getElementById('pdfFile').files[0];
- let formData=new FormData();
- formData.append("file",file);
+ let fd=new FormData();
+ fd.append("file",file);
 
  let res=await fetch('/resume_pdf',{
   method:'POST',
-  body:formData
+  body:fd
  });
 
  let data=await res.json();
 
-
  document.getElementById('res2').innerHTML =
- "<b>Detected Skills:</b> "+data.found+
- "<br><b>Predicted Role:</b> "+data.role+
- "<br><b>Recommended Skills:</b> "+data.recommendations;
+ "<b>Detected:</b> "+data.found+
+ "<br><b>Role:</b> "+data.role+
+ "<br><b>Recommended:</b> "+data.recommendations;
 }
 
 </script>
@@ -213,7 +194,7 @@ async function uploadPDF(){
 def home():
     return render_template_string(HTML)
 
-# ------------------ Evaluation Logic ------------------
+# ------------------ Evaluation ------------------
 @app.route('/eval', methods=['POST'])
 def eval():
     ans = request.json.get("answer","").lower()
@@ -221,8 +202,7 @@ def eval():
     feedback = []
 
     keywords = ["team","project","challenge","solution"]
-    matches = sum(1 for k in keywords if k in ans)
-    score += matches * 2
+    score += sum(1 for k in keywords if k in ans) * 2
 
     if len(ans) > 80:
         score += 2
@@ -234,95 +214,63 @@ def eval():
     else:
         feedback.append("Add examples")
 
-    if matches < 2:
-        feedback.append("Include more keywords")
-
     if not feedback:
         feedback.append("Excellent answer")
 
-    return jsonify({
-        "score": min(score,10),
-        "feedback": ", ".join(feedback)
-    })
+    return jsonify({"score": min(score,10), "feedback": ", ".join(feedback)})
 
-# ------------------ Smart Resume Analyzer ------------------
+# ------------------ Resume Logic ------------------
 def analyze_resume_text(text):
-
     text = text.lower()
 
-    # Skill categories
     roles = {
         "backend developer": ["node","java","python","flask"],
-        "frontend developer": ["react","html","css","javascript"],
-        "data scientist": ["machine learning","python","pandas"],
+        "frontend developer": ["react","html","css"],
+        "data scientist": ["machine learning","pandas"],
         "cloud engineer": ["aws","azure","cloud"]
     }
 
     detected = []
+    for skills in roles.values():
+        for s in skills:
+            if s in text:
+                detected.append(s)
 
-    # detect skills
-    all_skills = sum(roles.values(), [])
-    for skill in all_skills:
-        if skill in text:
-            detected.append(skill)
-
-    # detect role
-    detected_role = "general"
-    for role, skills in roles.items():
-        if any(skill in detected for skill in skills):
-            detected_role = role
+    role = "general"
+    for r, skills in roles.items():
+        if any(s in detected for s in skills):
+            role = r
             break
 
-    # role-based suggestions
-    recommendations = []
+    rec = {
+        "backend developer": ["API design","database","docker"],
+        "frontend developer": ["UI/UX","responsive design"],
+        "data scientist": ["deep learning","nlp"],
+        "cloud engineer": ["kubernetes","devops"]
+    }
 
-    if detected_role == "backend developer":
-        recommendations = ["API design", "database optimization", "docker"]
+    return detected, role, rec.get(role, ["python","projects"])
 
-    elif detected_role == "frontend developer":
-        recommendations = ["UI/UX", "responsive design", "react hooks"]
-
-    elif detected_role == "data scientist":
-        recommendations = ["deep learning", "nlp", "data visualization"]
-
-    elif detected_role == "cloud engineer":
-        recommendations = ["aws certification", "kubernetes", "devops"]
-
-    else:
-        recommendations = ["python", "projects", "problem solving"]
-
-    return detected, detected_role, recommendations
- @app.route('/resume_text', methods=['POST'])
+# ------------------ Resume TEXT ------------------
+@app.route('/resume_text', methods=['POST'])
 def resume_text():
     text = request.json.get("text","")
-
     found, role, rec = analyze_resume_text(text)
+    return jsonify({"found": found, "role": role, "recommendations": rec})
 
-    return jsonify({
-        "found": found,
-        "role": role,
-        "recommendations": rec
-    })
- @app.route('/resume_pdf', methods=['POST'])
+# ------------------ Resume PDF ------------------
+@app.route('/resume_pdf', methods=['POST'])
 def resume_pdf():
     file = request.files['file']
-
-    import io
-    pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+    reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
 
     text = ""
-    for page in pdf_reader.pages:
+    for page in reader.pages:
         if page.extract_text():
             text += page.extract_text()
 
     found, role, rec = analyze_resume_text(text)
-
-    return jsonify({
-        "found": found,
-        "role": role,
-        "recommendations": rec
-    })
-
+    return jsonify({"found": found, "role": role, "recommendations": rec})
 
 if __name__ == "__main__":
     app.run()
