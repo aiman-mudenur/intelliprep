@@ -196,8 +196,11 @@ async function uploadPDF(){
 
  let data=await res.json();
 
+
  document.getElementById('res2').innerHTML =
- "<b>Detected:</b> "+data.found+"<br><b>Missing:</b> "+data.missing;
+ "<b>Detected Skills:</b> "+data.found+
+ "<br><b>Predicted Role:</b> "+data.role+
+ "<br><b>Recommended Skills:</b> "+data.recommendations;
 }
 
 </script>
@@ -247,52 +250,60 @@ def analyze_resume_text(text):
 
     text = text.lower()
 
-    # Expanded skill database
-    skill_db = {
-        "programming": ["python","java","c++","javascript"],
-        "web": ["html","css","react","node","flask"],
-        "data": ["machine learning","deep learning","sql","pandas"],
-        "cloud": ["aws","azure","cloud","gcp"]
+    # Skill categories
+    roles = {
+        "backend developer": ["node","java","python","flask"],
+        "frontend developer": ["react","html","css","javascript"],
+        "data scientist": ["machine learning","python","pandas"],
+        "cloud engineer": ["aws","azure","cloud"]
     }
 
     detected = []
 
-    for category in skill_db:
-        for skill in skill_db[category]:
-            if skill in text:
-                detected.append(skill)
+    # detect skills
+    all_skills = sum(roles.values(), [])
+    for skill in all_skills:
+        if skill in text:
+            detected.append(skill)
 
-    # Dynamic missing skills (based on detected category)
-    suggestions = []
+    # detect role
+    detected_role = "general"
+    for role, skills in roles.items():
+        if any(skill in detected for skill in skills):
+            detected_role = role
+            break
 
-    if "python" in detected:
-        suggestions += ["flask","django"]
+    # role-based suggestions
+    recommendations = []
 
-    if "machine learning" in detected:
-        suggestions += ["deep learning","nlp"]
+    if detected_role == "backend developer":
+        recommendations = ["API design", "database optimization", "docker"]
 
-    if "cloud" in detected:
-        suggestions += ["aws","azure"]
+    elif detected_role == "frontend developer":
+        recommendations = ["UI/UX", "responsive design", "react hooks"]
 
-    if len(detected) == 0:
-        suggestions += ["python","sql","projects"]
+    elif detected_role == "data scientist":
+        recommendations = ["deep learning", "nlp", "data visualization"]
 
-    return detected, list(set(suggestions))
+    elif detected_role == "cloud engineer":
+        recommendations = ["aws certification", "kubernetes", "devops"]
 
+    else:
+        recommendations = ["python", "projects", "problem solving"]
 
-@app.route('/resume_text', methods=['POST'])
+    return detected, detected_role, recommendations
+ @app.route('/resume_text', methods=['POST'])
 def resume_text():
     text = request.json.get("text","")
 
-    found, suggestions = analyze_resume_text(text)
+    found, role, rec = analyze_resume_text(text)
 
     return jsonify({
         "found": found,
-        "missing": suggestions
+        "role": role,
+        "recommendations": rec
     })
-
-
-@app.route('/resume_pdf', methods=['POST'])
+ @app.route('/resume_pdf', methods=['POST'])
 def resume_pdf():
     file = request.files['file']
 
@@ -304,12 +315,14 @@ def resume_pdf():
         if page.extract_text():
             text += page.extract_text()
 
-    found, suggestions = analyze_resume_text(text)
+    found, role, rec = analyze_resume_text(text)
 
     return jsonify({
         "found": found,
-        "missing": suggestions
+        "role": role,
+        "recommendations": rec
     })
+
 
 if __name__ == "__main__":
     app.run()
