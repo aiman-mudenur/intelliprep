@@ -83,7 +83,11 @@ h2 {
 <p id="res2" class="result"></p>
 
 </div>
-
+<select id="question">
+<option>Tell me about yourself</option>
+<option>Describe a challenge</option>
+<option>Why should we hire you?</option>
+</select>
 <script>
 
 async function evalAns(){
